@@ -1,8 +1,8 @@
-name: Deploy React app to GitHub Pages
+name: Deploy Static React App
 
 on:
   push:
-    branches: [ "main" ]  # o "master" según tu repo
+    branches: [ "main" ]  # o master si usas esa
 
 permissions:
   contents: read
@@ -20,19 +20,15 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Build React app
-        run: |
-          npm install
-          npm run build
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: build  # cambia a "dist" si usas Vite
+          path: public   # 👈 aquí debe decir PUBLIC
 
       - name: Deploy to GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v4
+
