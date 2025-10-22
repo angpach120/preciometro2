@@ -1,0 +1,1636 @@
+diff --git a/src/App.jsx b/src/App.jsx
+index c19f82ba881c6a66ae0e7f7b4a1ea24223f03696..a69e95115a31665048408f2a621b003953c481c9 100644
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -1,50 +1,165 @@
+-import React, { useState, useEffect } from 'react';
+-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+-import Login from './components/Login';
+-import Dashboard from './components/Dashboard';
+-import Toaster from './components/ui/toaster';
++import React, { useEffect, useMemo, useState } from 'react';
++import Header from './components/Header';
++import SearchBar from './components/SearchBar';
++import ProductGrid from './components/ProductGrid';
++import ProductModal from './components/ProductModal';
++import ShoppingList from './components/ShoppingList';
++import TotalComparison from './components/TotalComparison';
++import EmptyState from './components/EmptyState';
++import { products } from './data/products';
++import { stores } from './data/stores';
+ 
+-function App() {
+-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+-  const [isLoading, setIsLoading] = useState(true);
++const App = () => {
++  const [query, setQuery] = useState('');
++  const [selectedProduct, setSelectedProduct] = useState(null);
++  const [shoppingList, setShoppingList] = useState([]);
++  const [hasCompared, setHasCompared] = useState(false);
+ 
+   useEffect(() => {
+-    const logged = localStorage.getItem('auth') === 'true';
+-    setIsAuthenticated(logged);
+-    setIsLoading(false);
+-  }, []);
++    if (shoppingList.length === 0) {
++      setHasCompared(false);
++    }
++  }, [shoppingList.length]);
+ 
+-  if (isLoading) return <div style={{textAlign:'center', marginTop:'50px'}}>Cargando...</div>;
++  const productMap = useMemo(() => {
++    const map = new Map();
++    products.forEach((product) => {
++      map.set(product.id, product);
++    });
++    return map;
++  }, [products]);
++
++  const filteredProducts = useMemo(() => {
++    const normalized = query.trim().toLowerCase();
++    if (!normalized) return products;
++
++    return products.filter((product) => {
++      const searchable = `${product.name} ${product.presentation} ${product.category}`.toLowerCase();
++      return searchable.includes(normalized);
++    });
++  }, [products, query]);
++
++  const storeTotals = useMemo(() => {
++    return stores.map((store) => {
++      let total = 0;
++      let pricedItems = 0;
++      const missing = [];
++
++      shoppingList.forEach((item) => {
++        const product = productMap.get(item.productId);
++        if (!product) return;
++
++        const priceEntry = product.prices.find((price) => price.storeId === store.id);
++        if (!priceEntry || priceEntry.price === null) {
++          missing.push(product.name);
++          return;
++        }
++
++        total += priceEntry.price * item.quantity;
++        pricedItems += 1;
++      });
++
++      return {
++        ...store,
++        total: pricedItems > 0 ? total : null,
++        missing
++      };
++    });
++  }, [shoppingList, productMap]);
++
++  const handleAddToList = (product) => {
++    setShoppingList((prev) => {
++      const existing = prev.find((item) => item.productId === product.id);
++      if (existing) {
++        return prev.map((item) =>
++          item.productId === product.id
++            ? { ...item, quantity: Number((item.quantity + 1).toFixed(2)) }
++            : item
++        );
++      }
++      return [
++        ...prev,
++        {
++          productId: product.id,
++          quantity: 1,
++          unit: product.unit ?? 'u'
++        }
++      ];
++    });
++    setHasCompared(false);
++  };
++
++  const handleUpdateQuantity = (productId, quantity) => {
++    setShoppingList((prev) =>
++      prev.map((item) =>
++        item.productId === productId
++          ? {
++              ...item,
++              quantity: Number.isNaN(quantity) || quantity <= 0 ? 1 : Number(quantity.toFixed(2))
++            }
++          : item
++      )
++    );
++    setHasCompared(false);
++  };
++
++  const handleUpdateUnit = (productId, unit) => {
++    setShoppingList((prev) =>
++      prev.map((item) => (item.productId === productId ? { ...item, unit } : item))
++    );
++    setHasCompared(false);
++  };
++
++  const handleRemove = (productId) => {
++    setShoppingList((prev) => prev.filter((item) => item.productId !== productId));
++    setHasCompared(false);
++  };
++
++  const handleCompareTotals = () => {
++    if (shoppingList.length === 0) return;
++    setHasCompared(true);
++  };
+ 
+   return (
+-    <Router>
+-      <Routes>
+-        <Route
+-          path="/"
+-          element={
+-            isAuthenticated
+-              ? <Navigate to="/dashboard" />
+-              : <Login onLogin={() => {
+-                  localStorage.setItem('auth', 'true');
+-                  setIsAuthenticated(true);
+-                }} />
+-          }
+-        />
+-        <Route
+-          path="/dashboard"
+-          element={
+-            isAuthenticated
+-              ? <Dashboard onLogout={() => {
+-                  localStorage.removeItem('auth');
+-                  setIsAuthenticated(false);
+-                }} />
+-              : <Navigate to="/" />
+-          }
+-        />
+-      </Routes>
+-      <Toaster />
+-    </Router>
++    <div className="app">
++      <Header />
++      <main className="layout">
++        <section className="catalog">
++          <SearchBar value={query} onChange={setQuery} resultsCount={filteredProducts.length} />
++
++          {filteredProducts.length === 0 ? (
++            <EmptyState
++              title="Sin resultados por ahora"
++              description="Intenta con otro término o explora el catálogo destacado."
++              action="Actualizamos los precios constantemente."
++            />
++          ) : (
++            <ProductGrid
++              products={filteredProducts}
++              onCompare={setSelectedProduct}
++              onAddToList={handleAddToList}
++            />
++          )}
++        </section>
++
++        <aside className="sidebar">
++          <ShoppingList
++            items={shoppingList}
++            products={products}
++            onUpdateQuantity={handleUpdateQuantity}
++            onUpdateUnit={handleUpdateUnit}
++            onRemove={handleRemove}
++            onCompare={handleCompareTotals}
++            disabled={shoppingList.length === 0}
++          />
++
++          <TotalComparison storeTotals={storeTotals} hasCompared={hasCompared} />
++        </aside>
++      </main>
++
++      <ProductModal product={selectedProduct} onClose={() => setSelectedProduct(null)} />
++    </div>
+   );
+-}
++};
+ 
+ export default App;
+diff --git a/src/components/EmptyState.jsx b/src/components/EmptyState.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..454c687aa23212919419386498120a9908a70916
+--- /dev/null
++++ b/src/components/EmptyState.jsx
+@@ -0,0 +1,11 @@
++import React from 'react';
++
++const EmptyState = ({ title, description, action }) => (
++  <div className="empty-state">
++    <h3>{title}</h3>
++    <p>{description}</p>
++    {action && <span className="empty-state__action">{action}</span>}
++  </div>
++);
++
++export default EmptyState;
+diff --git a/src/components/Header.jsx b/src/components/Header.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..7b69ab22a745c7575757113a9d8a984fe50d174f
+--- /dev/null
++++ b/src/components/Header.jsx
+@@ -0,0 +1,32 @@
++import React from 'react';
++
++const Header = () => {
++  return (
++    <header className="hero">
++      <div className="hero__copy">
++        <span className="hero__badge">Ahorra en cada compra</span>
++        <h1 className="hero__title">Preciometro</h1>
++        <p className="hero__subtitle">
++          Compara precios reales de los supermercados dominicanos en segundos y
++          decide dónde conviene llenar tu carrito.
++        </p>
++      </div>
++      <div className="hero__card">
++        <h2>¿Cómo funciona?</h2>
++        <ul>
++          <li>
++            <strong>Busca o explora</strong> tu producto entre nuestro catálogo curado.
++          </li>
++          <li>
++            <strong>Compara al instante</strong> precios por supermercado y elige el más barato.
++          </li>
++          <li>
++            <strong>Arma tu lista</strong> y calcula el total exacto en cada tienda antes de salir.
++          </li>
++        </ul>
++      </div>
++    </header>
++  );
++};
++
++export default Header;
+diff --git a/src/components/Login.jsx b/src/components/Login.jsx
+deleted file mode 100644
+index ad03a1994f742bb033ed03c67af00c38ba503230..0000000000000000000000000000000000000000
+--- a/src/components/Login.jsx
++++ /dev/null
+@@ -1,34 +0,0 @@
+-import React, { useState } from "react";
+-
+-export default function Login({ onLogin }) {
+-  const [user, setUser] = useState("");
+-  const [pass, setPass] = useState("");
+-
+-  return (
+-    <div style={{ textAlign: "center", marginTop: "100px" }}>
+-      <h2>Iniciar Sesión</h2>
+-      <input
+-        type="text"
+-        placeholder="Usuario"
+-        value={user}
+-        onChange={(e) => setUser(e.target.value)}
+-        style={{ margin: "5px" }}
+-      />
+-      <br />
+-      <input
+-        type="password"
+-        placeholder="Contraseña"
+-        value={pass}
+-        onChange={(e) => setPass(e.target.value)}
+-        style={{ margin: "5px" }}
+-      />
+-      <br />
+-      <button
+-        onClick={onLogin}
+-        style={{ marginTop: "10px", padding: "5px 10px", cursor: "pointer" }}
+-      >
+-        Entrar
+-      </button>
+-    </div>
+-  );
+-}
+diff --git a/src/components/ProductCard.jsx b/src/components/ProductCard.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..20b0a631a3d6d4d79555262e3c7959b74e1a688c
+--- /dev/null
++++ b/src/components/ProductCard.jsx
+@@ -0,0 +1,55 @@
++import React, { useMemo } from 'react';
++import { stores } from '../data/stores';
++
++const ProductCard = ({ product, onCompare, onAddToList }) => {
++  const { lowestPrice, lowestStore } = useMemo(() => {
++    const validPrices = product.prices.filter((price) => price.price !== null);
++    if (!validPrices.length) {
++      return { lowestPrice: null, lowestStore: null };
++    }
++    const sorted = [...validPrices].sort((a, b) => a.price - b.price);
++    const store = stores.find((item) => item.id === sorted[0].storeId);
++    return { lowestPrice: sorted[0].price, lowestStore: store?.shortName ?? sorted[0].storeId };
++  }, [product.prices]);
++
++  return (
++    <article className="product-card">
++      <div className="product-card__image">
++        <img src={product.image} alt={product.name} loading="lazy" />
++      </div>
++      <div className="product-card__body">
++        <div className="product-card__header">
++          <span className="product-card__category">{product.category}</span>
++          <h3>{product.name}</h3>
++          <p className="product-card__presentation">{product.presentation}</p>
++        </div>
++        <p className="product-card__description">{product.description}</p>
++        <div className="product-card__footer">
++          {lowestPrice ? (
++            <span className="product-card__tag">
++              Desde <strong>RD$ {lowestPrice.toFixed(2)}</strong> en {lowestStore}
++            </span>
++          ) : (
++            <span className="product-card__tag product-card__tag--muted">
++              Aún sin precios registrados
++            </span>
++          )}
++          <div className="product-card__actions">
++            <button type="button" onClick={() => onCompare(product)}>
++              Ver comparador
++            </button>
++            <button
++              type="button"
++              className="secondary"
++              onClick={() => onAddToList(product)}
++            >
++              Agregar a la lista
++            </button>
++          </div>
++        </div>
++      </div>
++    </article>
++  );
++};
++
++export default ProductCard;
+diff --git a/src/components/ProductGrid.jsx b/src/components/ProductGrid.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..519e27bf93884cee57af2a91f04708b0c562f8e0
+--- /dev/null
++++ b/src/components/ProductGrid.jsx
+@@ -0,0 +1,19 @@
++import React from 'react';
++import ProductCard from './ProductCard';
++
++const ProductGrid = ({ products, onCompare, onAddToList }) => {
++  return (
++    <div className="product-grid">
++      {products.map((product) => (
++        <ProductCard
++          key={product.id}
++          product={product}
++          onCompare={onCompare}
++          onAddToList={onAddToList}
++        />
++      ))}
++    </div>
++  );
++};
++
++export default ProductGrid;
+diff --git a/src/components/ProductModal.jsx b/src/components/ProductModal.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..a43efec89550e56ef9b5c12d63bf9448d3e80bed
+--- /dev/null
++++ b/src/components/ProductModal.jsx
+@@ -0,0 +1,110 @@
++import React, { useMemo } from 'react';
++import { stores } from '../data/stores';
++
++const formatDate = (value) => {
++  if (!value) return 'Sin fecha';
++  try {
++    return new Date(value).toLocaleDateString('es-DO', {
++      day: '2-digit',
++      month: 'short',
++      year: 'numeric'
++    });
++  } catch (error) {
++    return value;
++  }
++};
++
++const ProductModal = ({ product, onClose }) => {
++  const pricing = useMemo(() => {
++    if (!product) return { items: [], lowest: null, highest: null };
++
++    const items = stores.map((store) => {
++      const priceEntry = product.prices.find((price) => price.storeId === store.id);
++      return {
++        store,
++        price: priceEntry?.price ?? null,
++        updatedAt: priceEntry?.updatedAt ?? null
++      };
++    });
++
++    const available = items.filter((item) => item.price !== null);
++    const lowest = available.length
++      ? Math.min(...available.map((item) => item.price))
++      : null;
++    const highest = available.length
++      ? Math.max(...available.map((item) => item.price))
++      : null;
++
++    return { items, lowest, highest };
++  }, [product]);
++
++  if (!product) return null;
++
++  return (
++    <div className="modal-backdrop" onClick={onClose} role="presentation">
++      <div
++        className="modal"
++        role="dialog"
++        aria-modal="true"
++        aria-labelledby="product-modal-title"
++        onClick={(event) => event.stopPropagation()}
++      >
++        <header className="modal__header">
++          <div>
++            <span className="modal__badge">Comparador de precios</span>
++            <h2 id="product-modal-title">{product.name}</h2>
++            <p className="modal__subtitle">{product.presentation}</p>
++          </div>
++          <button type="button" className="modal__close" onClick={onClose} aria-label="Cerrar">
++            ×
++          </button>
++        </header>
++
++        <p className="modal__description">{product.description}</p>
++
++        <ul className="modal__list">
++          {pricing.items.map(({ store, price, updatedAt }) => (
++            <li key={store.id} className="modal__list-item">
++              <div className="modal__store">
++                <span className="modal__store-indicator" style={{ background: store.color }} />
++                <span className="modal__store-name">{store.name}</span>
++              </div>
++              <div className="modal__price">
++                {price !== null ? (
++                  <strong>RD$ {price.toFixed(2)}</strong>
++                ) : (
++                  <span className="modal__price--empty">Sin precio</span>
++                )}
++              </div>
++              <div className="modal__meta">
++                {price !== null ? (
++                  <span className="modal__updated">Actualizado {formatDate(updatedAt)}</span>
++                ) : (
++                  <span className="modal__updated">Te avisaremos cuando llegue</span>
++                )}
++              </div>
++              <div className="modal__tags">
++                {price !== null && price === pricing.lowest && (
++                  <span className="tag tag--success">Más bajo ↑</span>
++                )}
++                {price !== null && price === pricing.highest && (
++                  <span className="tag tag--alert">Más caro ↓</span>
++                )}
++                {price === null && <span className="tag tag--muted">Sin datos</span>}
++              </div>
++            </li>
++          ))}
++        </ul>
++
++        <footer className="modal__footer">
++          <p>
++            Los precios se actualizan automáticamente desde los portales oficiales de cada
++            supermercado.
++          </p>
++        </footer>
++      </div>
++    </div>
++  );
++};
++
++export default ProductModal;
+diff --git a/src/components/SearchBar.jsx b/src/components/SearchBar.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..396430f96b011f060f3e45ee24903e8b52d662a1
+--- /dev/null
++++ b/src/components/SearchBar.jsx
+@@ -0,0 +1,19 @@
++import React from 'react';
++
++const SearchBar = ({ value, onChange, resultsCount }) => {
++  return (
++    <div className="search-bar">
++      <input
++        type="search"
++        placeholder="Buscar producto o presentación (ej. arroz 1 lb)"
++        value={value}
++        onChange={(event) => onChange(event.target.value)}
++      />
++      <span className="search-bar__count">
++        {resultsCount} {resultsCount === 1 ? 'resultado' : 'resultados'}
++      </span>
++    </div>
++  );
++};
++
++export default SearchBar;
+diff --git a/src/components/ShoppingList.jsx b/src/components/ShoppingList.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..6a3474b15727a1710e431fa9e2d8a7f3be566660
+--- /dev/null
++++ b/src/components/ShoppingList.jsx
+@@ -0,0 +1,93 @@
++import React from 'react';
++
++const UNIT_OPTIONS = [
++  { value: 'u', label: 'u' },
++  { value: 'lb', label: 'lb' },
++  { value: 'kg', label: 'kg' },
++  { value: 'l', label: 'l' }
++];
++
++const ShoppingList = ({
++  items,
++  products,
++  onUpdateQuantity,
++  onUpdateUnit,
++  onRemove,
++  onCompare,
++  disabled
++}) => {
++  return (
++    <section className="shopping-list">
++      <header className="shopping-list__header">
++        <h2>Tu lista de compras</h2>
++        <p>Agrega cantidades y unidades. Puedes ajustar todo cuando quieras.</p>
++      </header>
++
++      {items.length === 0 ? (
++        <div className="shopping-list__empty">
++          <h3>Tu lista está vacía</h3>
++          <p>Explora el catálogo y agrega productos para comparar el total por supermercado.</p>
++        </div>
++      ) : (
++        <ul className="shopping-list__items">
++          {items.map((item) => {
++            const product = products.find((productItem) => productItem.id === item.productId);
++            if (!product) return null;
++
++            return (
++              <li key={item.productId} className="shopping-list__item">
++                <div className="shopping-list__info">
++                  <h4>{product.name}</h4>
++                  <span className="shopping-list__presentation">{product.presentation}</span>
++                </div>
++                <div className="shopping-list__controls">
++                  <label>
++                    Cantidad
++                    <input
++                      type="number"
++                      min="0.25"
++                      step="0.25"
++                      value={item.quantity}
++                      onChange={(event) => onUpdateQuantity(item.productId, Number(event.target.value))}
++                    />
++                  </label>
++                  <label>
++                    Unidad
++                    <select
++                      value={item.unit}
++                      onChange={(event) => onUpdateUnit(item.productId, event.target.value)}
++                    >
++                      {UNIT_OPTIONS.map((option) => (
++                        <option key={option.value} value={option.value}>
++                          {option.label}
++                        </option>
++                      ))}
++                    </select>
++                  </label>
++                  <button
++                    type="button"
++                    className="link"
++                    onClick={() => onRemove(item.productId)}
++                  >
++                    Quitar
++                  </button>
++                </div>
++              </li>
++            );
++          })}
++        </ul>
++      )}
++
++      <button
++        type="button"
++        className="compare-button"
++        onClick={onCompare}
++        disabled={disabled}
++      >
++        Comparar total por supermercado
++      </button>
++    </section>
++  );
++};
++
++export default ShoppingList;
+diff --git a/src/components/TotalComparison.jsx b/src/components/TotalComparison.jsx
+new file mode 100644
+index 0000000000000000000000000000000000000000..1abeb51f208847931358564d801b84e84136e198
+--- /dev/null
++++ b/src/components/TotalComparison.jsx
+@@ -0,0 +1,74 @@
++import React from 'react';
++
++const formatCurrency = (value) => `RD$ ${value.toFixed(2)}`;
++
++const TotalComparison = ({ storeTotals, hasCompared }) => {
++  if (!hasCompared) {
++    return (
++      <section className="total-comparison">
++        <h3>Total por supermercado</h3>
++        <p className="total-comparison__hint">
++          Arma tu lista y presiona “Comparar total por supermercado” para ver el desglose.
++        </p>
++      </section>
++    );
++  }
++
++  const withData = storeTotals.filter((item) => item.total !== null);
++  const lowest = withData.length ? Math.min(...withData.map((item) => item.total)) : null;
++  const highest = withData.length ? Math.max(...withData.map((item) => item.total)) : null;
++
++  return (
++    <section className="total-comparison">
++      <h3>Total por supermercado</h3>
++      {storeTotals.length === 0 ? (
++        <p className="total-comparison__hint">
++          Agrega al menos un producto para calcular los totales.
++        </p>
++      ) : withData.length === 0 ? (
++        <p className="total-comparison__hint">
++          Todavía no tenemos precios suficientes para calcular tu lista completa.
++        </p>
++      ) : (
++        <ul className="total-comparison__list">
++          {storeTotals.map((store) => (
++            <li key={store.id} className="total-comparison__item">
++              <div className="total-comparison__store">
++                <span className="total-comparison__indicator" style={{ background: store.color }} />
++                <span>{store.name}</span>
++              </div>
++              <div className="total-comparison__value">
++                {store.total !== null ? (
++                  <strong>{formatCurrency(store.total)}</strong>
++                ) : (
++                  <span className="total-comparison__pending">Sin datos suficientes</span>
++                )}
++              </div>
++              <div className="total-comparison__tags">
++                {store.total !== null && store.total === lowest && (
++                  <span className="tag tag--success">Total más bajo ↑</span>
++                )}
++                {store.total !== null && store.total === highest && (
++                  <span className="tag tag--alert">Total más caro ↓</span>
++                )}
++                {store.missing.length > 0 && (
++                  <span className="tag tag--muted">
++                    Falta precio de {store.missing.length}{' '}
++                    {store.missing.length === 1 ? 'producto' : 'productos'}
++                  </span>
++                )}
++              </div>
++              {store.missing.length > 0 && (
++                <p className="total-comparison__missing">
++                  {store.missing.join(', ')}
++                </p>
++              )}
++            </li>
++          ))}
++        </ul>
++      )}
++    </section>
++  );
++};
++
++export default TotalComparison;
+diff --git a/src/data/products.js b/src/data/products.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..d9e36eb1e0c46873e5466d79121081581b64b538
+--- /dev/null
++++ b/src/data/products.js
+@@ -0,0 +1,194 @@
++export const products = [
++  {
++    id: 'arroz-premium-1lb',
++    name: 'Arroz Premium Selecto',
++    presentation: '1 lb',
++    category: 'Granos y cereales',
++    description: 'Grano largo envejecido que siempre queda suelto y brillante.',
++    image:
++      'https://images.unsplash.com/photo-1604908177220-6161c7dcdb3d?auto=format&fit=crop&w=400&q=80',
++    unit: 'lb',
++    prices: [
++      { storeId: 'sirena', price: 68, updatedAt: '2024-03-16' },
++      { storeId: 'jumbo', price: 70, updatedAt: '2024-03-18' },
++      { storeId: 'nacional', price: 66.5, updatedAt: '2024-03-18' },
++      { storeId: 'bravo', price: 69.5, updatedAt: '2024-03-17' }
++    ]
++  },
++  {
++    id: 'leche-evaporada-315g',
++    name: 'Leche Evaporada Carnation',
++    presentation: '315 g',
++    category: 'Lácteos',
++    description: 'Clásica para postres y batidas cremosas.',
++    image:
++      'https://images.unsplash.com/photo-1580915411954-282cb1c76afe?auto=format&fit=crop&w=400&q=80',
++    unit: 'u',
++    prices: [
++      { storeId: 'sirena', price: 68, updatedAt: '2024-03-15' },
++      { storeId: 'jumbo', price: 70, updatedAt: '2024-03-16' },
++      { storeId: 'nacional', price: 67.5, updatedAt: '2024-03-16' },
++      { storeId: 'bravo', price: 69, updatedAt: '2024-03-14' }
++    ]
++  },
++  {
++    id: 'aceite-maiz-900ml',
++    name: 'Aceite de Maíz Mazola',
++    presentation: '900 ml',
++    category: 'Despensa',
++    description: 'Ideal para freír sin dejar olores fuertes.',
++    image:
++      'https://images.unsplash.com/photo-1615485290382-7c2ae45c4e1b?auto=format&fit=crop&w=400&q=80',
++    unit: 'u',
++    prices: [
++      { storeId: 'sirena', price: 235, updatedAt: '2024-03-10' },
++      { storeId: 'jumbo', price: 229, updatedAt: '2024-03-12' },
++      { storeId: 'nacional', price: 238, updatedAt: '2024-03-11' },
++      { storeId: 'bravo', price: null, updatedAt: '2024-03-09' }
++    ]
++  },
++  {
++    id: 'huevos-blancos-docena',
++    name: 'Huevos Blancos Frescos',
++    presentation: '12 unidades',
++    category: 'Huevos',
++    description: 'Docena seleccionada tamaño grande.',
++    image:
++      'https://images.unsplash.com/photo-1585238341986-655c2cf43a4d?auto=format&fit=crop&w=400&q=80',
++    unit: 'u',
++    prices: [
++      { storeId: 'sirena', price: 155, updatedAt: '2024-03-14' },
++      { storeId: 'jumbo', price: 149, updatedAt: '2024-03-14' },
++      { storeId: 'nacional', price: 152, updatedAt: '2024-03-13' },
++      { storeId: 'bravo', price: 150, updatedAt: '2024-03-13' }
++    ]
++  },
++  {
++    id: 'pasta-spaghetti-16oz',
++    name: 'Spaghetti Barilla',
++    presentation: '16 oz',
++    category: 'Pastas',
++    description: 'Pasta italiana con textura al dente garantizada.',
++    image:
++      'https://images.unsplash.com/photo-1589308078056-8320a778d77c?auto=format&fit=crop&w=400&q=80',
++    unit: 'u',
++    prices: [
++      { storeId: 'sirena', price: 125, updatedAt: '2024-03-18' },
++      { storeId: 'jumbo', price: 119, updatedAt: '2024-03-18' },
++      { storeId: 'nacional', price: 121, updatedAt: '2024-03-17' },
++      { storeId: 'bravo', price: 118, updatedAt: '2024-03-17' }
++    ]
++  },
++  {
++    id: 'habichuelas-rojas-15oz',
++    name: 'Habichuelas Rojas Goya',
++    presentation: '15 oz',
++    category: 'Enlatados',
++    description: 'Suaves y cremosas, listas para tus recetas.',
++    image:
++      'https://images.unsplash.com/photo-1612874470058-4667ea959cea?auto=format&fit=crop&w=400&q=80',
++    unit: 'u',
++    prices: [
++      { storeId: 'sirena', price: 89, updatedAt: '2024-03-12' },
++      { storeId: 'jumbo', price: 85, updatedAt: '2024-03-11' },
++      { storeId: 'nacional', price: 87, updatedAt: '2024-03-12' },
++      { storeId: 'bravo', price: 90, updatedAt: '2024-03-11' }
++    ]
++  },
++  {
++    id: 'pollo-entero-fresco',
++    name: 'Pollo Entero Fresco',
++    presentation: 'por kg',
++    category: 'Carnes',
++    description: 'Pollo criollo enfriado, listo para condimentar.',
++    image:
++      'https://images.unsplash.com/photo-1604908177220-6161c7dcdb3d?auto=format&fit=crop&w=400&q=80',
++    unit: 'kg',
++    prices: [
++      { storeId: 'sirena', price: 168, updatedAt: '2024-03-16' },
++      { storeId: 'jumbo', price: 172, updatedAt: '2024-03-16' },
++      { storeId: 'nacional', price: 170, updatedAt: '2024-03-15' },
++      { storeId: 'bravo', price: 175, updatedAt: '2024-03-15' }
++    ]
++  },
++  {
++    id: 'carne-molida-res-1lb',
++    name: 'Carne Molida de Res 90/10',
++    presentation: '1 lb',
++    category: 'Carnes',
++    description: 'Magro balanceado perfecto para albóndigas y pastas.',
++    image:
++      'https://images.unsplash.com/photo-1514516430032-7c5c6a67636e?auto=format&fit=crop&w=400&q=80',
++    unit: 'lb',
++    prices: [
++      { storeId: 'sirena', price: 188, updatedAt: '2024-03-17' },
++      { storeId: 'jumbo', price: 182, updatedAt: '2024-03-17' },
++      { storeId: 'nacional', price: 191, updatedAt: '2024-03-17' },
++      { storeId: 'bravo', price: 195, updatedAt: '2024-03-16' }
++    ]
++  },
++  {
++    id: 'queso-mozzarella-1lb',
++    name: 'Queso Mozzarella Rallado',
++    presentation: '1 lb',
++    category: 'Quesos',
++    description: 'Funde perfecto para tus pizzas caseras.',
++    image:
++      'https://images.unsplash.com/photo-1541690123271-3300bb34f7b7?auto=format&fit=crop&w=400&q=80',
++    unit: 'lb',
++    prices: [
++      { storeId: 'sirena', price: 325, updatedAt: '2024-03-15' },
++      { storeId: 'jumbo', price: 319, updatedAt: '2024-03-15' },
++      { storeId: 'nacional', price: null, updatedAt: '2024-03-14' },
++      { storeId: 'bravo', price: 330, updatedAt: '2024-03-14' }
++    ]
++  },
++  {
++    id: 'pan-molde-integral',
++    name: 'Pan de Molde Integral',
++    presentation: '680 g',
++    category: 'Panadería',
++    description: 'Rebanadas suaves con fibra para desayunos equilibrados.',
++    image:
++      'https://images.unsplash.com/photo-1608198093002-ad4e005484ec?auto=format&fit=crop&w=400&q=80',
++    unit: 'u',
++    prices: [
++      { storeId: 'sirena', price: 145, updatedAt: '2024-03-11' },
++      { storeId: 'jumbo', price: 139, updatedAt: '2024-03-12' },
++      { storeId: 'nacional', price: 149, updatedAt: '2024-03-11' },
++      { storeId: 'bravo', price: 141, updatedAt: '2024-03-12' }
++    ]
++  },
++  {
++    id: 'cafe-molido-1lb',
++    name: 'Café Molido Santo Domingo',
++    presentation: '1 lb',
++    category: 'Bebidas Calientes',
++    description: 'Tueste medio con notas de cacao.',
++    image:
++      'https://images.unsplash.com/photo-1511920170033-f8396924c348?auto=format&fit=crop&w=400&q=80',
++    unit: 'u',
++    prices: [
++      { storeId: 'sirena', price: 299, updatedAt: '2024-03-10' },
++      { storeId: 'jumbo', price: 295, updatedAt: '2024-03-10' },
++      { storeId: 'nacional', price: 305, updatedAt: '2024-03-09' },
++      { storeId: 'bravo', price: 298, updatedAt: '2024-03-11' }
++    ]
++  },
++  {
++    id: 'detergente-liquido-19l',
++    name: 'Detergente Líquido Ariel',
++    presentation: '1.9 L',
++    category: 'Limpieza del hogar',
++    description: 'Remueve manchas profundas con fragancia fresca.',
++    image:
++      'https://images.unsplash.com/photo-1585435557343-3b092031a831?auto=format&fit=crop&w=400&q=80',
++    unit: 'l',
++    prices: [
++      { storeId: 'sirena', price: 425, updatedAt: '2024-03-09' },
++      { storeId: 'jumbo', price: 415, updatedAt: '2024-03-09' },
++      { storeId: 'nacional', price: 430, updatedAt: '2024-03-08' },
++      { storeId: 'bravo', price: 419, updatedAt: '2024-03-08' }
++    ]
++  }
++];
+diff --git a/src/data/stores.js b/src/data/stores.js
+new file mode 100644
+index 0000000000000000000000000000000000000000..7c7f69e7fdc22894e5d8f55ae47c43e18de2e062
+--- /dev/null
++++ b/src/data/stores.js
+@@ -0,0 +1,30 @@
++export const stores = [
++  {
++    id: 'sirena',
++    name: 'La Sirena',
++    shortName: 'Sirena',
++    color: '#c67c00',
++    background: '#fff8e1'
++  },
++  {
++    id: 'jumbo',
++    name: 'Jumbo',
++    shortName: 'Jumbo',
++    color: '#1f2933',
++    background: '#ecf3ff'
++  },
++  {
++    id: 'nacional',
++    name: 'Supermercados Nacional',
++    shortName: 'Nacional',
++    color: '#0f766e',
++    background: '#e0f2f1'
++  },
++  {
++    id: 'bravo',
++    name: 'Supermercados Bravo',
++    shortName: 'Bravo',
++    color: '#b91c1c',
++    background: '#fdeaea'
++  }
++];
+diff --git a/src/index.css b/src/index.css
+new file mode 100644
+index 0000000000000000000000000000000000000000..76ebf5e4baea1e50960022e128a335c87a28b57f
+--- /dev/null
++++ b/src/index.css
+@@ -0,0 +1,669 @@
++@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap');
++
++:root {
++  --color-primary: #f2a900;
++  --color-primary-dark: #b27a00;
++  --color-bg: #fdfaf2;
++  --color-surface: #ffffff;
++  --color-text: #1f1f1f;
++  --color-muted: #6b6b6b;
++  --color-border: #e8e2d3;
++  --color-success: #0f7a47;
++  --color-alert: #b12f2f;
++  --radius-xl: 28px;
++  --radius-lg: 20px;
++  --radius-md: 16px;
++  --radius-sm: 10px;
++  --shadow-soft: 0 18px 45px rgba(50, 35, 0, 0.08);
++  --shadow-card: 0 14px 30px rgba(59, 40, 0, 0.07);
++}
++
++* {
++  box-sizing: border-box;
++}
++
++body {
++  margin: 0;
++  font-family: 'Poppins', 'Inter', 'Segoe UI', sans-serif;
++  background: var(--color-bg);
++  color: var(--color-text);
++  -webkit-font-smoothing: antialiased;
++}
++
++img {
++  display: block;
++  width: 100%;
++  height: 100%;
++  object-fit: cover;
++}
++
++a {
++  color: inherit;
++}
++
++button {
++  font: inherit;
++  border: none;
++  border-radius: 999px;
++  padding: 0.75rem 1.6rem;
++  cursor: pointer;
++  transition: transform 0.18s ease, box-shadow 0.18s ease;
++  background: var(--color-primary);
++  color: #111;
++  font-weight: 600;
++  box-shadow: 0 12px 24px rgba(242, 169, 0, 0.2);
++}
++
++button:hover:not(:disabled) {
++  transform: translateY(-1px);
++  box-shadow: 0 16px 28px rgba(242, 169, 0, 0.24);
++}
++
++button:disabled {
++  opacity: 0.5;
++  cursor: not-allowed;
++  box-shadow: none;
++}
++
++button.secondary {
++  background: transparent;
++  color: var(--color-text);
++  border: 1px solid rgba(0, 0, 0, 0.08);
++  box-shadow: none;
++}
++
++button.secondary:hover:not(:disabled) {
++  background: rgba(0, 0, 0, 0.05);
++  transform: none;
++}
++
++button.link {
++  background: none;
++  color: var(--color-muted);
++  padding: 0;
++  box-shadow: none;
++  border-radius: 0;
++  text-decoration: underline;
++}
++
++button.link:hover {
++  color: var(--color-text);
++}
++
++.app {
++  min-height: 100vh;
++}
++
++.hero {
++  max-width: 1120px;
++  margin: 0 auto;
++  padding: 3.5rem 2rem 2rem;
++  display: grid;
++  gap: 2.5rem;
++  grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
++  align-items: stretch;
++}
++
++.hero__copy {
++  background: linear-gradient(145deg, rgba(242, 169, 0, 0.18), rgba(242, 169, 0, 0));
++  padding: 2.6rem;
++  border-radius: var(--radius-xl);
++  box-shadow: var(--shadow-soft);
++}
++
++.hero__badge {
++  display: inline-flex;
++  align-items: center;
++  gap: 0.5rem;
++  background: rgba(242, 169, 0, 0.16);
++  border-radius: 999px;
++  padding: 0.35rem 1rem;
++  font-size: 0.75rem;
++  font-weight: 600;
++  letter-spacing: 0.05em;
++  text-transform: uppercase;
++}
++
++.hero__title {
++  font-size: clamp(2.5rem, 4vw, 3.6rem);
++  margin: 1rem 0 0.75rem;
++  letter-spacing: -0.03em;
++}
++
++.hero__subtitle {
++  font-size: 1.1rem;
++  color: var(--color-muted);
++  line-height: 1.6;
++  max-width: 36ch;
++}
++
++.hero__card {
++  background: var(--color-surface);
++  border-radius: var(--radius-lg);
++  padding: 2.4rem;
++  box-shadow: var(--shadow-soft);
++  display: flex;
++  flex-direction: column;
++  gap: 1rem;
++}
++
++.hero__card h2 {
++  margin: 0;
++  font-size: 1.25rem;
++}
++
++.hero__card ul {
++  margin: 0;
++  padding-left: 1.2rem;
++  color: var(--color-muted);
++  display: grid;
++  gap: 0.6rem;
++}
++
++.layout {
++  max-width: 1120px;
++  margin: 0 auto;
++  padding: 0 2rem 4rem;
++  display: grid;
++  gap: 2.5rem;
++  grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
++  align-items: start;
++}
++
++.catalog {
++  display: grid;
++  gap: 1.8rem;
++}
++
++.sidebar {
++  display: grid;
++  gap: 1.8rem;
++  position: sticky;
++  top: 2rem;
++  align-self: start;
++}
++
++.search-bar {
++  display: flex;
++  align-items: center;
++  background: var(--color-surface);
++  border-radius: var(--radius-lg);
++  border: 1px solid rgba(0, 0, 0, 0.04);
++  padding: 0.85rem 1rem;
++  box-shadow: var(--shadow-card);
++  gap: 1rem;
++}
++
++.search-bar input {
++  flex: 1;
++  border: none;
++  background: transparent;
++  font-size: 1rem;
++  outline: none;
++}
++
++.search-bar__count {
++  font-size: 0.85rem;
++  color: var(--color-muted);
++}
++
++.product-grid {
++  display: grid;
++  gap: 1.5rem;
++  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
++}
++
++.product-card {
++  background: var(--color-surface);
++  border-radius: var(--radius-lg);
++  overflow: hidden;
++  display: flex;
++  flex-direction: column;
++  box-shadow: var(--shadow-card);
++}
++
++.product-card__image {
++  height: 180px;
++  overflow: hidden;
++}
++
++.product-card__image img {
++  transition: transform 0.35s ease;
++}
++
++.product-card:hover .product-card__image img {
++  transform: scale(1.05);
++}
++
++.product-card__body {
++  padding: 1.4rem 1.6rem;
++  display: grid;
++  gap: 1rem;
++  flex: 1;
++}
++
++.product-card__header h3 {
++  margin: 0.4rem 0 0;
++  font-size: 1.05rem;
++}
++
++.product-card__category {
++  font-size: 0.75rem;
++  text-transform: uppercase;
++  letter-spacing: 0.08em;
++  color: var(--color-muted);
++}
++
++.product-card__presentation {
++  margin: 0.15rem 0 0;
++  font-size: 0.9rem;
++  color: var(--color-muted);
++}
++
++.product-card__description {
++  margin: 0;
++  color: var(--color-muted);
++  font-size: 0.92rem;
++  line-height: 1.6;
++}
++
++.product-card__footer {
++  display: grid;
++  gap: 1rem;
++}
++
++.product-card__tag {
++  background: rgba(242, 169, 0, 0.18);
++  color: var(--color-primary-dark);
++  padding: 0.5rem 0.9rem;
++  border-radius: var(--radius-sm);
++  font-size: 0.9rem;
++}
++
++.product-card__tag strong {
++  font-weight: 600;
++}
++
++.product-card__tag--muted {
++  background: rgba(0, 0, 0, 0.05);
++  color: var(--color-muted);
++}
++
++.product-card__actions {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 0.75rem;
++}
++
++.empty-state {
++  background: var(--color-surface);
++  padding: 2rem;
++  border-radius: var(--radius-lg);
++  box-shadow: var(--shadow-card);
++  text-align: center;
++}
++
++.empty-state h3 {
++  margin: 0 0 0.6rem;
++}
++
++.empty-state p {
++  margin: 0;
++  color: var(--color-muted);
++}
++
++.empty-state__action {
++  display: block;
++  margin-top: 1rem;
++  font-size: 0.9rem;
++  color: var(--color-primary-dark);
++}
++
++.shopping-list,
++.total-comparison {
++  background: var(--color-surface);
++  border-radius: var(--radius-lg);
++  padding: 1.8rem;
++  box-shadow: var(--shadow-card);
++}
++
++.shopping-list__header h2 {
++  margin: 0;
++  font-size: 1.15rem;
++}
++
++.shopping-list__header p {
++  margin: 0.45rem 0 0;
++  color: var(--color-muted);
++  font-size: 0.9rem;
++}
++
++.shopping-list__empty {
++  margin-top: 1.2rem;
++  border: 1px dashed rgba(0, 0, 0, 0.12);
++  border-radius: var(--radius-md);
++  padding: 1.4rem;
++  text-align: center;
++  color: var(--color-muted);
++}
++
++.shopping-list__items {
++  list-style: none;
++  margin: 1.2rem 0;
++  padding: 0;
++  display: grid;
++  gap: 1.1rem;
++}
++
++.shopping-list__item {
++  display: grid;
++  gap: 0.8rem;
++  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
++  padding-bottom: 1rem;
++}
++
++.shopping-list__item:last-child {
++  border-bottom: none;
++  padding-bottom: 0;
++}
++
++.shopping-list__info h4 {
++  margin: 0;
++  font-size: 1rem;
++}
++
++.shopping-list__presentation {
++  font-size: 0.85rem;
++  color: var(--color-muted);
++}
++
++.shopping-list__controls {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 0.85rem;
++  align-items: center;
++}
++
++.shopping-list__controls label {
++  font-size: 0.75rem;
++  display: grid;
++  gap: 0.35rem;
++  color: var(--color-muted);
++  text-transform: uppercase;
++  letter-spacing: 0.08em;
++}
++
++.shopping-list__controls input,
++.shopping-list__controls select {
++  padding: 0.5rem 0.75rem;
++  border-radius: var(--radius-sm);
++  border: 1px solid rgba(0, 0, 0, 0.12);
++  font-size: 0.95rem;
++  min-width: 80px;
++}
++
++.compare-button {
++  width: 100%;
++  margin-top: 0.8rem;
++}
++
++.total-comparison h3 {
++  margin: 0 0 1rem;
++}
++
++.total-comparison__hint {
++  margin: 0;
++  color: var(--color-muted);
++  font-size: 0.92rem;
++  line-height: 1.5;
++}
++
++.total-comparison__list {
++  list-style: none;
++  margin: 0;
++  padding: 0;
++  display: grid;
++  gap: 1rem;
++}
++
++.total-comparison__item {
++  padding: 1rem 1.1rem;
++  border-radius: var(--radius-md);
++  border: 1px solid rgba(0, 0, 0, 0.06);
++  display: grid;
++  gap: 0.5rem;
++}
++
++.total-comparison__store {
++  display: flex;
++  align-items: center;
++  gap: 0.6rem;
++  font-weight: 600;
++}
++
++.total-comparison__indicator {
++  width: 12px;
++  height: 12px;
++  border-radius: 999px;
++  display: inline-block;
++}
++
++.total-comparison__value {
++  font-size: 1.15rem;
++}
++
++.total-comparison__pending {
++  color: var(--color-muted);
++}
++
++.total-comparison__tags {
++  display: flex;
++  flex-wrap: wrap;
++  gap: 0.5rem;
++}
++
++.total-comparison__missing {
++  margin: 0;
++  font-size: 0.82rem;
++  color: var(--color-muted);
++}
++
++.tag {
++  display: inline-flex;
++  align-items: center;
++  gap: 0.4rem;
++  font-size: 0.75rem;
++  letter-spacing: 0.03em;
++  text-transform: uppercase;
++  font-weight: 600;
++  padding: 0.35rem 0.75rem;
++  border-radius: 999px;
++}
++
++.tag--success {
++  background: rgba(15, 122, 71, 0.12);
++  color: var(--color-success);
++}
++
++.tag--alert {
++  background: rgba(177, 47, 47, 0.12);
++  color: var(--color-alert);
++}
++
++.tag--muted {
++  background: rgba(0, 0, 0, 0.05);
++  color: var(--color-muted);
++}
++
++.modal-backdrop {
++  position: fixed;
++  inset: 0;
++  background: rgba(19, 12, 2, 0.55);
++  display: grid;
++  place-items: center;
++  padding: 2rem 1rem;
++  backdrop-filter: blur(6px);
++  z-index: 40;
++}
++
++.modal {
++  width: min(640px, 100%);
++  background: var(--color-surface);
++  border-radius: var(--radius-lg);
++  box-shadow: 0 28px 60px rgba(0, 0, 0, 0.2);
++  padding: 2rem;
++  display: grid;
++  gap: 1.5rem;
++}
++
++.modal__header {
++  display: flex;
++  justify-content: space-between;
++  align-items: flex-start;
++  gap: 1rem;
++}
++
++.modal__badge {
++  display: inline-flex;
++  padding: 0.25rem 0.75rem;
++  border-radius: 999px;
++  background: rgba(242, 169, 0, 0.16);
++  font-size: 0.75rem;
++  font-weight: 600;
++  letter-spacing: 0.05em;
++  text-transform: uppercase;
++}
++
++.modal__header h2 {
++  margin: 0.6rem 0 0;
++}
++
++.modal__subtitle {
++  margin: 0.15rem 0 0;
++  color: var(--color-muted);
++}
++
++.modal__close {
++  background: rgba(0, 0, 0, 0.06);
++  color: var(--color-text);
++  width: 38px;
++  height: 38px;
++  border-radius: 50%;
++  display: grid;
++  place-items: center;
++  font-size: 1.4rem;
++  line-height: 1;
++  box-shadow: none;
++}
++
++.modal__description {
++  margin: 0;
++  color: var(--color-muted);
++  line-height: 1.6;
++}
++
++.modal__list {
++  list-style: none;
++  margin: 0;
++  padding: 0;
++  display: grid;
++  gap: 1rem;
++}
++
++.modal__list-item {
++  display: grid;
++  gap: 0.4rem;
++  padding: 1rem 1.1rem;
++  border-radius: var(--radius-md);
++  border: 1px solid rgba(0, 0, 0, 0.08);
++  background: rgba(0, 0, 0, 0.015);
++}
++
++.modal__store {
++  display: flex;
++  align-items: center;
++  gap: 0.6rem;
++  font-weight: 600;
++}
++
++.modal__store-indicator {
++  width: 12px;
++  height: 12px;
++  border-radius: 50%;
++}
++
++.modal__price strong {
++  font-size: 1.2rem;
++}
++
++.modal__price--empty {
++  color: var(--color-muted);
++}
++
++.modal__meta {
++  font-size: 0.82rem;
++  color: var(--color-muted);
++}
++
++.modal__tags {
++  display: flex;
++  gap: 0.5rem;
++}
++
++.modal__footer {
++  font-size: 0.85rem;
++  color: var(--color-muted);
++}
++
++@media (max-width: 1024px) {
++  .hero {
++    grid-template-columns: 1fr;
++  }
++
++  .layout {
++    grid-template-columns: 1fr;
++  }
++
++  .sidebar {
++    position: static;
++  }
++}
++
++@media (max-width: 720px) {
++  .hero {
++    padding: 2.8rem 1.4rem 1.5rem;
++  }
++
++  .layout {
++    padding: 0 1.4rem 3rem;
++  }
++
++  .product-card__actions {
++    flex-direction: column;
++    align-items: stretch;
++  }
++
++  button {
++    width: 100%;
++    justify-content: center;
++  }
++
++  .search-bar {
++    flex-direction: column;
++    align-items: flex-start;
++  }
++
++  .search-bar__count {
++    align-self: flex-end;
++  }
++}
++
++@media (max-width: 540px) {
++  .modal {
++    padding: 1.5rem;
++  }
++
++  .modal__list-item {
++    padding: 0.9rem;
++  }
++}
+diff --git a/src/index.js b/src/index.js
+index 14427254fe4e11f24264f9b615371e227890ac7a..fa8dae445de3865480a7fa707915921a3a49abe4 100644
+--- a/src/index.js
++++ b/src/index.js
+@@ -1,7 +1,8 @@
+ import React from "react";
+ import { createRoot } from "react-dom/client";
+ import App from "./App";
++import "./index.css";
+ 
+ const container = document.getElementById("root");
+ const root = createRoot(container);
+ root.render(<App />);
