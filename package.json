@@ -1,22 +1,31 @@
 {
-  "name": "my-react-app",
-  "version": "1.0.0",
+  "name": "supercompare",
   "private": true,
-  "homepage": "https://TU_USUARIO.github.io/NOMBRE_DEL_REPO",
-  "dependencies": {
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "react-router-dom": "^6.23.0"
-  },
+  "version": "1.0.0",
+  "type": "module",
   "scripts": {
-    "start": "npx serve -s build",
-    "build": "npx babel --presets @babel/preset-react src --out-dir build",
-    "predeploy": "npm run build",
-    "deploy": "gh-pages -d build"
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "scrape:jumbo": "node scripts/scrape_jumbo.mjs",
+    "scrape:sirena": "node scripts/scrape_sirena.mjs",
+    "push": "node scripts/push_to_supabase.mjs"
   },
-  "devDependencies": {
-    "@babel/cli": "^7.24.0",
-    "@babel/preset-react": "^7.22.15",
-    "gh-pages": "^6.1.1"
-  }
+  "dependencies": [
+    "@supabase/supabase-js@2",
+    "clsx",
+    "dayjs",
+    "react",
+    "react-dom"
+  ],
+  "devDependencies": [
+    "@types/node",
+    "autoprefixer",
+    "postcss",
+    "tailwindcss",
+    "vite",
+    "@vitejs/plugin-react",
+    "playwright"
+  ]
 }
+
