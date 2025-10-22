@@ -5,27 +5,29 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "start": "vite",
     "build": "vite build",
     "preview": "vite preview",
     "scrape:jumbo": "node scripts/scrape_jumbo.mjs",
     "scrape:sirena": "node scripts/scrape_sirena.mjs",
     "push": "node scripts/push_to_supabase.mjs"
   },
-  "dependencies": [
-    "@supabase/supabase-js@2",
-    "clsx",
-    "dayjs",
-    "react",
-    "react-dom"
-  ],
-  "devDependencies": [
-    "@types/node",
-    "autoprefixer",
-    "postcss",
-    "tailwindcss",
-    "vite",
-    "@vitejs/plugin-react",
-    "playwright"
-  ]
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.3",
+    "clsx": "^2.1.1",
+    "dayjs": "^1.11.10",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "@vitejs/plugin-react": "^4.2.1",
+    "autoprefixer": "^10.4.19",
+    "playwright": "^1.44.1",
+    "postcss": "^8.4.33",
+    "tailwindcss": "^3.4.13",
+    "vite": "^5.2.0"
+  }
 }
+
 
